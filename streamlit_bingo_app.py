@@ -1,0 +1,386 @@
+import copy
+import html
+import random
+from typing import Dict
+
+import streamlit as st
+
+st.set_page_config(page_title="スプラビンゴ", page_icon="🎯", layout="wide")
+
+# =========================
+# お題データ（元コードから必要部分のみ移植）
+# =========================
+level1_topics = [
+    'フデで「勝つ」',
+    'ストリンガーで「勝つ」',
+    'シューターで「勝つ」',
+    'ブラスターを「使う」',
+    'ワイパーを「使う」',
+    'スロッシャーで「勝つ」',
+    'ローラーで「勝つ」',
+    'スプラシューターでキルとアシスト合計5以上',
+    '52ガロンで4デス以下',
+    'わかばシューターで1000ポイント以上塗る',
+    'N-ZAP85でSP4回以上使う',
+    '1000ポイント以上塗る',
+    'リザルトでキルかアシストを合計10以上',
+    '5デス以下',
+    '1試合でスペシャル5回以上',
+    'ダイナモ、リッター、エクスのいずれかを「使う」',
+    'ハイドラ、キャンシェル、フルイドのいずれかを「使う」',
+    'スパイガジェットソレーラかワイドローラーを「使う」',
+    'クラッシュブラスターネオかガエンFFを「使う」',
+    'カニタンクを使って１キル以上する',
+    'テイオウイカを使って１キル以上する',
+    '(スペシャル名)NO.1の表彰を得る',
+    'ギア・スタートダッシュを付けて「勝つ」',
+    'ギア・復活ペナルティアップを付けて「勝つ」',
+    'ギア・受け身術を付けて「勝つ」',
+]
+
+level2_topics = [
+    '相手チームの誰よりも多いキルとアシスト数の合計',
+    '相手チームの誰よりも少ないデス数',
+    '相手チームの誰よりも多い塗りポイント',
+    '相手チームの誰よりも多いSP使用回数',
+    '全体で2番目に少ないキルとアシスト数の合計',
+    '全体で2番目に多いデス数',
+    '全体で2番目に少ない塗りポイント',
+    '全体で2番目に少ないSP使用回数',
+    'キルとアシスト数の合計とデス数が同じ',
+    'デス数とSP使用数が同じ',
+    'キルとアシスト数の合計とSP使用数が同じ',
+    'リッター系統でキルとアシスト合計5以上',
+    'ダイナモローラー系統で4デス以下',
+    'エクスプロッシャー系統で1000ポイント以上塗る',
+    'ハイドラント系統でSP4回以上使う',
+    'スパイガジェット系統でキルとアシスト合計8以上',
+    'ラピッドブラスターエリート系統で2デス以下',
+    'ケルビン525系統で800ポイント以上塗る',
+    'プロモデラー系統でSP7回以上使う',
+    'イグザミナー系統でキルかアシスト合計10以上',
+    '14式竹筒銃系統で3デス以下',
+    'LACT系統で1500ポイント以上塗る',
+    'R-PEN系統でSP6回以上使う',
+    'ラインマーカーでキルする',
+    'カーリングボムでキルする',
+    'トリプルトルネードでキルする',
+    'ショクワンダーの突撃でキルする',
+    'ウルトラハンコ投げでキルする(自己申告)',
+    'フデかローラーでコロコロキルする',
+    'イカニンでイカ速0のダイナモテスラを「使う」',
+    'ペナルティアップを付けたもみじシューターを「使う」',
+    '逆境、イカニン、対物アップを同時に「使う」',
+    'メインギアパワーをインク回復力アップのみにする',
+    'メインギアパワーをサブ影響軽減のみにする',
+    'メインギアパワーをスペシャル減少量ダウンのみにする',
+    '注目された時間NO.1と塗りポイントNO.1の表彰を同時に得る',
+    '塗りポイントNO.1とバトルNO.1の表彰を同時に得る',
+    '注目された時間NO.1とバトルNO.1の表彰を同時に得る',
+    'シェルターで「勝つ」',
+    'チャージャーで「勝つ」',
+    'スクイックリンβを「使う」',
+    'パブロ・ヒューを「使う」',
+    'H3リールガンDを「使う」',
+    'ソイチューバーカスタムを「使う」',
+    'スピナーで「勝つ」',
+    'マニューバーで「勝つ」',
+]
+
+level3_topics = [
+    'キルとアシスト合計15回以上で「勝つ」',
+    '1デス以下で「勝つ」',
+    '1500ポイント以上塗って「勝つ」',
+    'スペシャルを7回以上使って「勝つ」',
+    'キルとアシスト数より多いデス数で「勝つ」',
+    'トラップで１キル以上する',
+    'アメフラシで１キル以上する',
+    'スミナガシートで１キル以上する',
+    'トライストリンガー系統で金表彰3つ',
+    'キャンシェル系統で金表彰3つ',
+    'オフロ無印でキルかアシスト10以上',
+    'フィンセント無印で2デス以下',
+    'Sブラ91で塗りポイント1000以上',
+    '金ノーチラスでSP5回以上使う',
+    '張替傘乙(和傘乙)を使って勝利する',
+    'ボルネオを使って勝利する',
+    '塗りポイントNO.1と移動した距離NO.1の表彰を同時に得る',
+    'バトルNO.1と耐えたダメージNO.1の表彰を同時に得る',
+    '注目された時間NO.1とアシスト数NO.1の表彰を同時に得る',
+    'H3Dで3点バーストキルをする(自己申告)',
+    '一人が1試合中スペシャルを使わない',
+]
+
+level4_topics = [
+    'スペースシューターでトドメNO.1を得る',
+    'カーボンローラー無印でアシストNO.1を得る',
+    'ジャイロオフで「勝つ」',
+    'スティックとジャイロ感度-5で「勝つ」',
+    'カニタンクの球体モードで1キル以上する',
+    '3キル3デス3スペシャルで「勝つ」',
+    '●●をたおした‼が3つ表示されているときにスクショを撮る',
+    'フルイドVカスタムでピチュンキルをする(自己申告)',
+    'デンタルワイパーミントで1振りで同時に2人斬る(自己申告)',
+    'キルかアシスト合計1回以下で「勝つ」',
+    '塗りポイント400ポイント以下で「勝つ」',
+]
+
+ROWS = ['1', '2', '3', '4', '5']
+COLS = ['A', 'B', 'C', 'D', 'E']
+CENTER_POS = 'C-3'
+CENTER_TOPIC = 'チームで同じブキでそろえる'
+MAX_HISTORY = 5
+
+COLOR_MAP = {
+    'pink': '#ffd7e2',
+    'green': '#daf5da',
+    'blue': '#dceeff',
+    'lightyellow': '#fff7c8',
+    'lightpurple': '#ead9ff',
+    'white': '#ffffff',
+}
+
+COLOR_LABELS = {
+    'pink': 'Lv1枠',
+    'green': 'Lv2枠',
+    'blue': 'Lv3枠',
+    'lightpurple': 'Lv4枠',
+    'lightyellow': '中央固定',
+    'white': 'クリア済み',
+}
+
+st.markdown(
+    """
+    <style>
+    .app-title {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 0.2rem;
+    }
+    .app-sub {
+        color: #666;
+        margin-bottom: 1rem;
+    }
+    .bingo-cell {
+        border: 1px solid rgba(49, 51, 63, 0.15);
+        border-radius: 14px;
+        padding: 0.65rem 0.7rem;
+        min-height: 138px;
+        margin-bottom: 0.4rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .bingo-pos {
+        font-size: 0.78rem;
+        font-weight: 700;
+        opacity: 0.72;
+        margin-bottom: 0.35rem;
+    }
+    .bingo-topic {
+        font-size: 0.95rem;
+        line-height: 1.35;
+        word-break: break-word;
+        white-space: pre-wrap;
+    }
+    .done-badge {
+        display: inline-block;
+        padding: 0.18rem 0.45rem;
+        border-radius: 999px;
+        background: rgba(0,0,0,0.08);
+        font-size: 0.72rem;
+        font-weight: 700;
+        margin-top: 0.55rem;
+    }
+    .legend-chip {
+        display: inline-block;
+        padding: 0.25rem 0.6rem;
+        border-radius: 999px;
+        margin: 0.12rem 0.2rem 0.12rem 0;
+        font-size: 0.84rem;
+        border: 1px solid rgba(49, 51, 63, 0.12);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+def init_state() -> None:
+    if 'bingo_card' not in st.session_state:
+        st.session_state.bingo_card = None
+    if 'history' not in st.session_state:
+        st.session_state.history = []
+    if 'current_level' not in st.session_state:
+        st.session_state.current_level = 1
+
+
+def generate_bingo_card(level: int) -> Dict[str, Dict[str, str]]:
+    if level == 1:
+        topics_level1 = random.sample(level1_topics, 14)
+        topics_level2 = random.sample(level2_topics, 10)
+        topics = topics_level1 + topics_level2
+        colors = ['pink'] * 14 + ['green'] * 10
+    elif level == 2:
+        topics_level1 = random.sample(level1_topics, 10)
+        topics_level2 = random.sample(level2_topics, 12)
+        topics_level3 = random.sample(level3_topics, 2)
+        topics = topics_level1 + topics_level2 + topics_level3
+        colors = ['pink'] * 10 + ['green'] * 12 + ['blue'] * 2
+    elif level == 3:
+        topics_level1 = random.sample(level1_topics, 7)
+        topics_level2 = random.sample(level2_topics, 13)
+        topics_level3 = random.sample(level3_topics, 3)
+        topics_level4 = random.sample(level4_topics, 1)
+        topics = topics_level1 + topics_level2 + topics_level3 + topics_level4
+        colors = ['pink'] * 7 + ['green'] * 13 + ['blue'] * 3 + ['lightpurple'] * 1
+    elif level == 4:
+        topics_level2 = random.sample(level2_topics, 10)
+        topics_level3 = random.sample(level3_topics, 12)
+        topics_level4 = random.sample(level4_topics, 2)
+        topics = topics_level2 + topics_level3 + topics_level4
+        colors = ['green'] * 10 + ['blue'] * 12 + ['lightpurple'] * 2
+    elif level == 5:
+        topics_level2 = random.sample(level2_topics, 6)
+        topics_level3 = random.sample(level3_topics, 12)
+        topics_level4 = random.sample(level4_topics, 6)
+        topics = topics_level2 + topics_level3 + topics_level4
+        colors = ['green'] * 6 + ['blue'] * 12 + ['lightpurple'] * 6
+    else:
+        raise ValueError('レベルは1〜5のみ対応です。')
+
+    combined = list(zip(topics, colors))
+    random.shuffle(combined)
+    topics, colors = zip(*combined)
+
+    bingo_card: Dict[str, Dict[str, str]] = {}
+    index = 0
+    for col in COLS:
+        for row in ROWS:
+            position = f'{col}-{row}'
+            if position == CENTER_POS:
+                bingo_card[position] = {'topic': CENTER_TOPIC, 'color': 'lightyellow', 'cleared': False}
+            else:
+                bingo_card[position] = {'topic': topics[index], 'color': colors[index], 'cleared': False}
+                index += 1
+    return bingo_card
+
+
+def push_history() -> None:
+    if st.session_state.bingo_card is None:
+        return
+    st.session_state.history.append(copy.deepcopy(st.session_state.bingo_card))
+    if len(st.session_state.history) > MAX_HISTORY:
+        st.session_state.history.pop(0)
+
+
+def clear_cell(position: str) -> None:
+    if st.session_state.bingo_card is None:
+        return
+    cell = st.session_state.bingo_card[position]
+    if cell['cleared']:
+        return
+    push_history()
+    cell['topic'] = 'Clear!!'
+    cell['color'] = 'white'
+    cell['cleared'] = True
+
+
+def undo() -> None:
+    if st.session_state.history:
+        st.session_state.bingo_card = st.session_state.history.pop()
+
+
+def count_cleared(card: Dict[str, Dict[str, str]]) -> int:
+    return sum(1 for cell in card.values() if cell.get('cleared'))
+
+
+def render_legend() -> None:
+    chips = []
+    for key in ['pink', 'green', 'blue', 'lightpurple', 'lightyellow', 'white']:
+        chips.append(
+            f"<span class='legend-chip' style='background:{COLOR_MAP[key]}'>{html.escape(COLOR_LABELS[key])}</span>"
+        )
+    st.markdown(''.join(chips), unsafe_allow_html=True)
+
+
+def render_cell(position: str, cell: Dict[str, str]) -> None:
+    bg = COLOR_MAP.get(cell['color'], '#ffffff')
+    body = html.escape(cell['topic']).replace('\n', '<br>')
+    done_badge = "<div class='done-badge'>クリア済み</div>" if cell.get('cleared') else ''
+    st.markdown(
+        f"""
+        <div class="bingo-cell" style="background:{bg};">
+            <div>
+                <div class="bingo-pos">{position}</div>
+                <div class="bingo-topic">{body}</div>
+            </div>
+            {done_badge}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if cell.get('cleared'):
+        st.button('クリア済み', key=f'done_{position}', disabled=True, use_container_width=True)
+    else:
+        if st.button(f'{position} をクリア', key=f'clear_{position}', use_container_width=True):
+            clear_cell(position)
+            st.rerun()
+
+
+init_state()
+
+st.markdown("<div class='app-title'>🎯 スプラビンゴ</div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='app-sub'>レベル別5x5ビンゴを生成して、達成したマスを手動でクリアしていく用のStreamlit版です。</div>",
+    unsafe_allow_html=True,
+)
+
+with st.sidebar:
+    st.header('設定')
+    selected_level = st.radio('レベルを選ぶ', [1, 2, 3, 4, 5], index=st.session_state.current_level - 1, horizontal=False)
+
+    if st.button('新しいビンゴを生成', use_container_width=True):
+        st.session_state.current_level = selected_level
+        st.session_state.bingo_card = generate_bingo_card(selected_level)
+        st.session_state.history = []
+        st.rerun()
+
+    undo_disabled = len(st.session_state.history) == 0
+    if st.button('1手もどす', use_container_width=True, disabled=undo_disabled):
+        undo()
+        st.rerun()
+
+    if st.session_state.bingo_card is not None:
+        cleared = count_cleared(st.session_state.bingo_card)
+        st.metric('クリア済みマス', f'{cleared} / 25')
+        st.caption(f'戻せる履歴: {len(st.session_state.history)} / {MAX_HISTORY}')
+
+    st.divider()
+    st.write('使い方')
+    st.caption('1. レベルを選んで新規生成')
+    st.caption('2. 達成したマスだけ「◯-◯ をクリア」を押す')
+    st.caption('3. 間違えたら「1手もどす」を使う')
+
+if st.session_state.bingo_card is None:
+    st.info('左のサイドバーからレベルを選んで「新しいビンゴを生成」を押してください。')
+    st.stop()
+
+col1, col2 = st.columns([1.3, 1])
+with col1:
+    st.subheader(f'レベル {st.session_state.current_level} ビンゴ')
+with col2:
+    cleared = count_cleared(st.session_state.bingo_card)
+    st.write(f'進捗: **{cleared} / 25**')
+
+render_legend()
+st.write('')
+
+for row in ROWS:
+    row_columns = st.columns(5)
+    for idx, col in enumerate(COLS):
+        pos = f'{col}-{row}'
+        with row_columns[idx]:
+            render_cell(pos, st.session_state.bingo_card[pos])
