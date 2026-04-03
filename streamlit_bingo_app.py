@@ -1,7 +1,9 @@
 import copy
+import hashlib
 import html
 import random
-from typing import Dict
+import unicodedata
+from typing import Dict, Optional
 
 import streamlit as st
 
@@ -168,6 +170,12 @@ st.markdown(
         color: #666;
         margin-bottom: 1.0rem;
     }
+    .seed-note {
+        font-size: 0.92rem;
+        color: #666;
+        margin-top: -0.2rem;
+        margin-bottom: 0.8rem;
+    }
     .bingo-cell {
         border: 1px solid rgba(49, 51, 63, 0.14);
         border-radius: 12px;
@@ -238,44 +246,65 @@ def init_state() -> None:
         st.session_state.history = []
     if 'current_level' not in st.session_state:
         st.session_state.current_level = 1
+    if 'last_seed_text' not in st.session_state:
+        st.session_state.last_seed_text = ""
 
 
-def generate_bingo_card(level: int) -> Dict[str, Dict[str, str]]:
+def text_to_seed(text: str, max_value: Optional[int] = None) -> int:
+    normalized = unicodedata.normalize("NFC", text)
+    digest = hashlib.sha256(normalized.encode("utf-8")).digest()
+    seed = int.from_bytes(digest[:8], byteorder="big", signed=False)
+
+    if max_value is not None:
+        if max_value <= 0:
+            raise ValueError("max_value は 1 以上である必要があります。")
+        seed %= max_value
+
+    return seed
+
+
+def make_random_from_text(text: str) -> random.Random:
+    return random.Random(text_to_seed(text))
+
+
+def generate_bingo_card(level: int, seed_text: str) -> Dict[str, Dict[str, str]]:
+    rng = make_random_from_text(f"level:{level}|seed:{seed_text}")
+
     if level == 1:
-        topics_level1 = random.sample(level1_topics, 14)
-        topics_level2 = random.sample(level2_topics, 10)
+        topics_level1 = rng.sample(level1_topics, 14)
+        topics_level2 = rng.sample(level2_topics, 10)
         topics = topics_level1 + topics_level2
         colors = ['pink'] * 14 + ['green'] * 10
     elif level == 2:
-        topics_level1 = random.sample(level1_topics, 10)
-        topics_level2 = random.sample(level2_topics, 12)
-        topics_level3 = random.sample(level3_topics, 2)
+        topics_level1 = rng.sample(level1_topics, 10)
+        topics_level2 = rng.sample(level2_topics, 12)
+        topics_level3 = rng.sample(level3_topics, 2)
         topics = topics_level1 + topics_level2 + topics_level3
         colors = ['pink'] * 10 + ['green'] * 12 + ['blue'] * 2
     elif level == 3:
-        topics_level1 = random.sample(level1_topics, 7)
-        topics_level2 = random.sample(level2_topics, 13)
-        topics_level3 = random.sample(level3_topics, 3)
-        topics_level4 = random.sample(level4_topics, 1)
+        topics_level1 = rng.sample(level1_topics, 7)
+        topics_level2 = rng.sample(level2_topics, 13)
+        topics_level3 = rng.sample(level3_topics, 3)
+        topics_level4 = rng.sample(level4_topics, 1)
         topics = topics_level1 + topics_level2 + topics_level3 + topics_level4
         colors = ['pink'] * 7 + ['green'] * 13 + ['blue'] * 3 + ['lightpurple'] * 1
     elif level == 4:
-        topics_level2 = random.sample(level2_topics, 10)
-        topics_level3 = random.sample(level3_topics, 12)
-        topics_level4 = random.sample(level4_topics, 2)
+        topics_level2 = rng.sample(level2_topics, 10)
+        topics_level3 = rng.sample(level3_topics, 12)
+        topics_level4 = rng.sample(level4_topics, 2)
         topics = topics_level2 + topics_level3 + topics_level4
         colors = ['green'] * 10 + ['blue'] * 12 + ['lightpurple'] * 2
     elif level == 5:
-        topics_level2 = random.sample(level2_topics, 6)
-        topics_level3 = random.sample(level3_topics, 12)
-        topics_level4 = random.sample(level4_topics, 6)
+        topics_level2 = rng.sample(level2_topics, 6)
+        topics_level3 = rng.sample(level3_topics, 12)
+        topics_level4 = rng.sample(level4_topics, 6)
         topics = topics_level2 + topics_level3 + topics_level4
         colors = ['green'] * 6 + ['blue'] * 12 + ['lightpurple'] * 6
     else:
         raise ValueError('レベルは1〜5のみ対応です。')
 
     combined = list(zip(topics, colors))
-    random.shuffle(combined)
+    rng.shuffle(combined)
     topics, colors = zip(*combined)
 
     bingo_card: Dict[str, Dict[str, str]] = {}
@@ -365,10 +394,13 @@ st.markdown(
 with st.sidebar:
     st.header('設定')
     selected_level = st.radio('レベルを選ぶ', [1, 2, 3, 4, 5], index=st.session_state.current_level - 1, horizontal=False)
+    seed_text = st.text_input("シード文字列", value=st.session_state.last_seed_text)
+    st.caption("同じ文字列なら同じビンゴシートになります。空欄でも生成できますが、その場合は毎回同じ「空欄用シート」になります。")
 
     if st.button('新しいビンゴを生成', use_container_width=True):
         st.session_state.current_level = selected_level
-        st.session_state.bingo_card = generate_bingo_card(selected_level)
+        st.session_state.last_seed_text = seed_text
+        st.session_state.bingo_card = generate_bingo_card(selected_level, seed_text)
         st.session_state.history = []
         st.rerun()
 
@@ -381,15 +413,18 @@ with st.sidebar:
         cleared = count_cleared(st.session_state.bingo_card)
         st.metric('クリア済みマス', f'{cleared} / 25')
         st.caption(f'戻せる履歴: {len(st.session_state.history)} / {MAX_HISTORY}')
+        shown_seed = st.session_state.last_seed_text if st.session_state.last_seed_text != "" else "（空欄）"
+        st.caption(f'現在のシード: {shown_seed}')
 
     st.divider()
     st.write('使い方')
-    st.caption('1. レベルを選んで新規生成')
-    st.caption('2. 達成したマスだけ「◯-◯ をクリア」を押す')
-    st.caption('3. 間違えたら「1手もどす」を使う')
+    st.caption('1. レベルとシード文字列を入れて新規生成')
+    st.caption('2. 同じレベル・同じ文字列なら同じ盤面になる')
+    st.caption('3. 達成したマスだけ「◯-◯ をクリア」を押す')
+    st.caption('4. 間違えたら「1手もどす」を使う')
 
 if st.session_state.bingo_card is None:
-    st.info('左のサイドバーからレベルを選んで「新しいビンゴを生成」を押してください。')
+    st.info('左のサイドバーでレベルとシード文字列を入力して「新しいビンゴを生成」を押してください。')
     st.stop()
 
 header_left, header_right = st.columns([1.2, 0.8])
@@ -398,6 +433,9 @@ with header_left:
 with header_right:
     cleared = count_cleared(st.session_state.bingo_card)
     st.write(f'進捗: **{cleared} / 25**')
+
+current_seed_label = st.session_state.last_seed_text if st.session_state.last_seed_text != "" else "（空欄）"
+st.markdown(f"<div class='seed-note'>現在のシード文字列: <b>{html.escape(current_seed_label)}</b></div>", unsafe_allow_html=True)
 
 render_legend()
 st.write('')
