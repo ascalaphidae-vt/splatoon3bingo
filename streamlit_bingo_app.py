@@ -153,25 +153,27 @@ st.markdown(
     """
     <style>
     .block-container {
-        padding-top: 1.2rem;
-        padding-bottom: 1.2rem;
-        max-width: 1500px;
+        padding-top: 2.2rem;
+        padding-bottom: 1.0rem;
+        max-width: 1480px;
     }
     .app-title {
         font-size: 2rem;
         font-weight: 700;
-        margin-bottom: 0.15rem;
+        margin-top: 0.1rem;
+        margin-bottom: 0.2rem;
+        line-height: 1.25;
     }
     .app-sub {
         color: #666;
-        margin-bottom: 0.9rem;
+        margin-bottom: 1.0rem;
     }
     .bingo-cell {
         border: 1px solid rgba(49, 51, 63, 0.14);
         border-radius: 12px;
-        padding: 0.45rem 0.5rem;
-        min-height: 108px;
-        margin-bottom: 0.28rem;
+        padding: 0.42rem 0.48rem;
+        min-height: 96px;
+        margin-bottom: 0.24rem;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -179,15 +181,15 @@ st.markdown(
         overflow: hidden;
     }
     .bingo-pos {
-        font-size: 0.7rem;
+        font-size: 0.68rem;
         font-weight: 700;
         color: #222222;
         opacity: 0.9;
-        margin-bottom: 0.2rem;
+        margin-bottom: 0.18rem;
     }
     .bingo-topic {
-        font-size: 0.78rem;
-        line-height: 1.28;
+        font-size: 0.76rem;
+        line-height: 1.24;
         color: #111111;
         word-break: break-word;
         overflow-wrap: anywhere;
@@ -200,9 +202,9 @@ st.markdown(
         border-radius: 999px;
         background: rgba(0, 0, 0, 0.08);
         color: #111111;
-        font-size: 0.68rem;
+        font-size: 0.66rem;
         font-weight: 700;
-        margin-top: 0.45rem;
+        margin-top: 0.4rem;
     }
     .legend-chip {
         display: inline-block;
@@ -215,13 +217,13 @@ st.markdown(
         font-weight: 600;
     }
     div[data-testid="column"] {
-        padding-left: 0.16rem;
-        padding-right: 0.16rem;
+        padding-left: 0.14rem;
+        padding-right: 0.14rem;
     }
     div[data-testid="stButton"] > button {
-        padding-top: 0.32rem;
-        padding-bottom: 0.32rem;
-        font-size: 0.9rem;
+        padding-top: 0.28rem;
+        padding-bottom: 0.28rem;
+        font-size: 0.88rem;
     }
     </style>
     """,
