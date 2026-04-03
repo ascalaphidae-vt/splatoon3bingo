@@ -152,54 +152,76 @@ COLOR_LABELS = {
 st.markdown(
     """
     <style>
+    .block-container {
+        padding-top: 1.2rem;
+        padding-bottom: 1.2rem;
+        max-width: 1500px;
+    }
     .app-title {
         font-size: 2rem;
         font-weight: 700;
-        margin-bottom: 0.2rem;
+        margin-bottom: 0.15rem;
     }
     .app-sub {
         color: #666;
-        margin-bottom: 1rem;
+        margin-bottom: 0.9rem;
     }
     .bingo-cell {
-        border: 1px solid rgba(49, 51, 63, 0.15);
-        border-radius: 14px;
-        padding: 0.65rem 0.7rem;
-        min-height: 138px;
-        margin-bottom: 0.4rem;
+        border: 1px solid rgba(49, 51, 63, 0.14);
+        border-radius: 12px;
+        padding: 0.45rem 0.5rem;
+        min-height: 108px;
+        margin-bottom: 0.28rem;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+        overflow: hidden;
     }
     .bingo-pos {
-        font-size: 0.78rem;
+        font-size: 0.7rem;
         font-weight: 700;
-        opacity: 0.72;
-        margin-bottom: 0.35rem;
+        color: #222222;
+        opacity: 0.9;
+        margin-bottom: 0.2rem;
     }
     .bingo-topic {
-        font-size: 0.95rem;
-        line-height: 1.35;
+        font-size: 0.78rem;
+        line-height: 1.28;
+        color: #111111;
         word-break: break-word;
+        overflow-wrap: anywhere;
         white-space: pre-wrap;
+        font-weight: 600;
     }
     .done-badge {
         display: inline-block;
-        padding: 0.18rem 0.45rem;
+        padding: 0.14rem 0.42rem;
         border-radius: 999px;
-        background: rgba(0,0,0,0.08);
-        font-size: 0.72rem;
+        background: rgba(0, 0, 0, 0.08);
+        color: #111111;
+        font-size: 0.68rem;
         font-weight: 700;
-        margin-top: 0.55rem;
+        margin-top: 0.45rem;
     }
     .legend-chip {
         display: inline-block;
-        padding: 0.25rem 0.6rem;
+        padding: 0.22rem 0.56rem;
         border-radius: 999px;
-        margin: 0.12rem 0.2rem 0.12rem 0;
-        font-size: 0.84rem;
+        margin: 0.1rem 0.18rem 0.1rem 0;
+        font-size: 0.78rem;
         border: 1px solid rgba(49, 51, 63, 0.12);
+        color: #111111;
+        font-weight: 600;
+    }
+    div[data-testid="column"] {
+        padding-left: 0.16rem;
+        padding-right: 0.16rem;
+    }
+    div[data-testid="stButton"] > button {
+        padding-top: 0.32rem;
+        padding-bottom: 0.32rem;
+        font-size: 0.9rem;
     }
     </style>
     """,
@@ -368,10 +390,10 @@ if st.session_state.bingo_card is None:
     st.info('左のサイドバーからレベルを選んで「新しいビンゴを生成」を押してください。')
     st.stop()
 
-col1, col2 = st.columns([1.3, 1])
-with col1:
+header_left, header_right = st.columns([1.2, 0.8])
+with header_left:
     st.subheader(f'レベル {st.session_state.current_level} ビンゴ')
-with col2:
+with header_right:
     cleared = count_cleared(st.session_state.bingo_card)
     st.write(f'進捗: **{cleared} / 25**')
 
@@ -379,7 +401,7 @@ render_legend()
 st.write('')
 
 for row in ROWS:
-    row_columns = st.columns(5)
+    row_columns = st.columns(5, gap='small')
     for idx, col in enumerate(COLS):
         pos = f'{col}-{row}'
         with row_columns[idx]:
