@@ -10,7 +10,7 @@ import streamlit as st
 st.set_page_config(page_title="スプラビンゴ", page_icon="🎯", layout="wide")
 
 # =========================
-# お題データ（元コードから必要部分のみ移植）
+# お題データ
 # =========================
 level1_topics = [
     'フデで「勝つ」',
@@ -23,8 +23,8 @@ level1_topics = [
     'スプラシューターでキルとアシスト合計5以上',
     '52ガロンで4デス以下',
     'わかばシューターで1000ポイント以上塗る',
-    'N-ZAP85でSP4回以上使う',
-    '1000ポイント以上塗る',
+    'N-ZAP85(黒ZAP)でSP4回以上使う',
+    '1200ポイント以上塗る',
     'リザルトでキルかアシストを合計10以上',
     '5デス以下',
     '1試合でスペシャル5回以上',
@@ -127,10 +127,17 @@ level4_topics = [
     '塗りポイント400ポイント以下で「勝つ」',
 ]
 
+center_topics = [
+    'ビンゴプレイヤーで同じブキにそろえる',
+    '互いの持ちブキを交換',
+    '互いのいつものギア(見た目)を交換',
+    'おそろいのギアにする',
+    '開幕ナイスをする',
+]
+
 ROWS = ['1', '2', '3', '4', '5']
 COLS = ['A', 'B', 'C', 'D', 'E']
 CENTER_POS = 'C-3'
-CENTER_TOPIC = 'チームで同じブキでそろえる'
 MAX_HISTORY = 5
 
 COLOR_MAP = {
@@ -147,7 +154,7 @@ COLOR_LABELS = {
     'green': 'Lv2枠',
     'blue': 'Lv3枠',
     'lightpurple': 'Lv4枠',
-    'lightyellow': '中央固定',
+    'lightyellow': '中央枠',
     'white': 'クリア済み',
 }
 
@@ -238,7 +245,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
 def init_state() -> None:
     if 'bingo_card' not in st.session_state:
         st.session_state.bingo_card = None
@@ -249,23 +255,18 @@ def init_state() -> None:
     if 'last_seed_text' not in st.session_state:
         st.session_state.last_seed_text = ""
 
-
 def text_to_seed(text: str, max_value: Optional[int] = None) -> int:
     normalized = unicodedata.normalize("NFC", text)
     digest = hashlib.sha256(normalized.encode("utf-8")).digest()
     seed = int.from_bytes(digest[:8], byteorder="big", signed=False)
-
     if max_value is not None:
         if max_value <= 0:
             raise ValueError("max_value は 1 以上である必要があります。")
         seed %= max_value
-
     return seed
-
 
 def make_random_from_text(text: str) -> random.Random:
     return random.Random(text_to_seed(text))
-
 
 def generate_bingo_card(level: int, seed_text: str) -> Dict[str, Dict[str, str]]:
     rng = make_random_from_text(f"level:{level}|seed:{seed_text}")
@@ -306,6 +307,7 @@ def generate_bingo_card(level: int, seed_text: str) -> Dict[str, Dict[str, str]]
     combined = list(zip(topics, colors))
     rng.shuffle(combined)
     topics, colors = zip(*combined)
+    center_topic = rng.choice(center_topics)
 
     bingo_card: Dict[str, Dict[str, str]] = {}
     index = 0
@@ -313,12 +315,11 @@ def generate_bingo_card(level: int, seed_text: str) -> Dict[str, Dict[str, str]]
         for row in ROWS:
             position = f'{col}-{row}'
             if position == CENTER_POS:
-                bingo_card[position] = {'topic': CENTER_TOPIC, 'color': 'lightyellow', 'cleared': False}
+                bingo_card[position] = {'topic': center_topic, 'color': 'lightyellow', 'cleared': False}
             else:
                 bingo_card[position] = {'topic': topics[index], 'color': colors[index], 'cleared': False}
                 index += 1
     return bingo_card
-
 
 def push_history() -> None:
     if st.session_state.bingo_card is None:
@@ -326,7 +327,6 @@ def push_history() -> None:
     st.session_state.history.append(copy.deepcopy(st.session_state.bingo_card))
     if len(st.session_state.history) > MAX_HISTORY:
         st.session_state.history.pop(0)
-
 
 def clear_cell(position: str) -> None:
     if st.session_state.bingo_card is None:
@@ -339,15 +339,12 @@ def clear_cell(position: str) -> None:
     cell['color'] = 'white'
     cell['cleared'] = True
 
-
 def undo() -> None:
     if st.session_state.history:
         st.session_state.bingo_card = st.session_state.history.pop()
 
-
 def count_cleared(card: Dict[str, Dict[str, str]]) -> int:
     return sum(1 for cell in card.values() if cell.get('cleared'))
-
 
 def render_legend() -> None:
     chips = []
@@ -356,7 +353,6 @@ def render_legend() -> None:
             f"<span class='legend-chip' style='background:{COLOR_MAP[key]}'>{html.escape(COLOR_LABELS[key])}</span>"
         )
     st.markdown(''.join(chips), unsafe_allow_html=True)
-
 
 def render_cell(position: str, cell: Dict[str, str]) -> None:
     bg = COLOR_MAP.get(cell['color'], '#ffffff')
@@ -374,14 +370,12 @@ def render_cell(position: str, cell: Dict[str, str]) -> None:
         """,
         unsafe_allow_html=True,
     )
-
     if cell.get('cleared'):
         st.button('クリア済み', key=f'done_{position}', disabled=True, use_container_width=True)
     else:
         if st.button(f'{position} をクリア', key=f'clear_{position}', use_container_width=True):
             clear_cell(position)
             st.rerun()
-
 
 init_state()
 
@@ -420,8 +414,9 @@ with st.sidebar:
     st.write('使い方')
     st.caption('1. レベルとシード文字列を入れて新規生成')
     st.caption('2. 同じレベル・同じ文字列なら同じ盤面になる')
-    st.caption('3. 達成したマスだけ「◯-◯ をクリア」を押す')
-    st.caption('4. 間違えたら「1手もどす」を使う')
+    st.caption('3. 中央マスもシードに応じて再現可能に変わる')
+    st.caption('4. 達成したマスだけ「◯-◯ をクリア」を押す')
+    st.caption('5. 間違えたら「1手もどす」を使う')
 
 if st.session_state.bingo_card is None:
     st.info('左のサイドバーでレベルとシード文字列を入力して「新しいビンゴを生成」を押してください。')
