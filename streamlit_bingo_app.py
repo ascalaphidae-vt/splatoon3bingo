@@ -308,6 +308,8 @@ def init_state() -> None:
         st.session_state.board_mode = '9マスビンゴシート'
     if 'grid_size' not in st.session_state:
         st.session_state.grid_size = 3
+    if 'memo_text' not in st.session_state:
+        st.session_state.memo_text = ''
 
 
 def text_to_seed(text: str, max_value: Optional[int] = None) -> int:
@@ -530,6 +532,7 @@ with st.sidebar:
     st.caption('2. 同じ条件なら同じ盤面になります')
     st.caption('3. 試合後、達成したマスぶんだけ「◯-◯ をクリア」を押してください')
     st.caption('4. まちがえたら「1手もどす」を使ってください')
+    st.text_area('メモ', key='memo_text', height=140)
 
 if st.session_state.bingo_card is None:
     st.info('左のサイドバーでシートサイズ・レベル・シード文字列を入力して「新しいビンゴを生成」を押してください。')
