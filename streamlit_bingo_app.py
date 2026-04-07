@@ -229,7 +229,20 @@ st.markdown(
         overflow: hidden;
     }
     .bingo-cell.small-board {
-        min-height: 112px;
+        min-height: 104px;
+        padding: 0.5rem 0.56rem;
+    }
+    .bingo-cell.small-board .bingo-pos {
+        font-size: 0.8rem;
+        margin-bottom: 0.24rem;
+    }
+    .bingo-cell.small-board .bingo-topic {
+        font-size: 0.98rem;
+        line-height: 1.34;
+    }
+    .bingo-cell.small-board .done-badge {
+        font-size: 0.78rem;
+        margin-top: 0.5rem;
     }
     .bingo-pos {
         font-size: 0.68rem;
