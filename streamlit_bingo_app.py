@@ -184,6 +184,7 @@ COLOR_MAP = {
     'lightyellow': '#fff7c8',
     'lightpurple': '#ead9ff',
     'white': '#ffffff',
+    'black': '#111111',
 }
 
 COLOR_LABELS = {
@@ -193,6 +194,7 @@ COLOR_LABELS = {
     'lightpurple': 'Lv4枠',
     'lightyellow': '中央枠',
     'white': 'クリア済み',
+    'black': 'クリア済み',
 }
 
 st.markdown(
@@ -373,7 +375,7 @@ def clear_cell(position: str) -> None:
         return
     push_history()
     cell['topic'] = 'Clear!!'
-    cell['color'] = 'white'
+    cell['color'] = 'black'
     cell['cleared'] = True
 
 def undo() -> None:
@@ -385,29 +387,34 @@ def count_cleared(card: Dict[str, Dict[str, str]]) -> int:
 
 def render_legend() -> None:
     chips = []
-    for key in ['pink', 'green', 'blue', 'lightpurple', 'lightyellow', 'white']:
+    for key in ['pink', 'green', 'blue', 'lightpurple', 'lightyellow', 'black']:
         chips.append(
-            f"<span class='legend-chip' style='background:{COLOR_MAP[key]}'>{html.escape(COLOR_LABELS[key])}</span>"
+            f"<span class='legend-chip' style='background:{COLOR_MAP[key]}; color:{'#ffffff' if key == 'black' else '#111111'}'>{html.escape(COLOR_LABELS[key])}</span>"
         )
     st.markdown(''.join(chips), unsafe_allow_html=True)
 
 def render_cell(position: str, cell: Dict[str, str]) -> None:
     bg = COLOR_MAP.get(cell['color'], '#ffffff')
     body = html.escape(cell['topic']).replace('\n', '<br>')
-    done_badge = "<div class='done-badge'>クリア済み</div>" if cell.get('cleared') else ''
+    is_cleared = cell.get('cleared')
+    text_color = '#ffffff' if is_cleared else '#111111'
+    pos_color = '#ffffff' if is_cleared else '#222222'
+    badge_bg = 'rgba(255, 255, 255, 0.18)' if is_cleared else 'rgba(0, 0, 0, 0.08)'
+    badge_color = '#ffffff' if is_cleared else '#111111'
+    done_badge = f"<div class='done-badge' style='background:{badge_bg}; color:{badge_color};'>クリア済み</div>" if is_cleared else ''
     st.markdown(
         f"""
         <div class="bingo-cell" style="background:{bg};">
             <div>
-                <div class="bingo-pos">{position}</div>
-                <div class="bingo-topic">{body}</div>
+                <div class="bingo-pos" style="color:{pos_color};">{position}</div>
+                <div class="bingo-topic" style="color:{text_color};">{body}</div>
             </div>
             {done_badge}
         </div>
         """,
         unsafe_allow_html=True,
     )
-    if cell.get('cleared'):
+    if is_cleared:
         st.button('クリア済み', key=f'done_{position}', disabled=True, use_container_width=True)
     else:
         if st.button(f'{position} をクリア', key=f'clear_{position}', use_container_width=True):
