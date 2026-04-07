@@ -172,11 +172,7 @@ center_topics = [
     '連勝する',
 ]
 
-ROWS = ['1', '2', '3', '4', '5']
-COLS = ['A', 'B', 'C', 'D', 'E']
-CENTER_POS = 'C-3'
-MAX_HISTORY = 5
-
+BOARD_OPTIONS = ['9マスビンゴシート', '25マスビンゴシート']
 COLOR_MAP = {
     'pink': '#ffd7e2',
     'green': '#daf5da',
@@ -186,14 +182,12 @@ COLOR_MAP = {
     'white': '#ffffff',
     'black': '#111111',
 }
-
 COLOR_LABELS = {
     'pink': 'Lv1枠',
     'green': 'Lv2枠',
     'blue': 'Lv3枠',
     'lightpurple': 'Lv4枠',
     'lightyellow': '中央枠',
-    'white': 'クリア済み',
     'black': 'クリア済み',
 }
 
@@ -233,6 +227,9 @@ st.markdown(
         justify-content: space-between;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
         overflow: hidden;
+    }
+    .bingo-cell.small-board {
+        min-height: 112px;
     }
     .bingo-pos {
         font-size: 0.68rem;
@@ -284,6 +281,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 def init_state() -> None:
     if 'bingo_card' not in st.session_state:
         st.session_state.bingo_card = None
@@ -293,79 +291,129 @@ def init_state() -> None:
         st.session_state.current_level = 1
     if 'last_seed_text' not in st.session_state:
         st.session_state.last_seed_text = ""
+    if 'board_mode' not in st.session_state:
+        st.session_state.board_mode = '9マスビンゴシート'
+    if 'grid_size' not in st.session_state:
+        st.session_state.grid_size = 3
+
 
 def text_to_seed(text: str, max_value: Optional[int] = None) -> int:
-    normalized = unicodedata.normalize("NFC", text)
-    digest = hashlib.sha256(normalized.encode("utf-8")).digest()
-    seed = int.from_bytes(digest[:8], byteorder="big", signed=False)
+    normalized = unicodedata.normalize('NFC', text)
+    digest = hashlib.sha256(normalized.encode('utf-8')).digest()
+    seed = int.from_bytes(digest[:8], byteorder='big', signed=False)
     if max_value is not None:
         if max_value <= 0:
-            raise ValueError("max_value は 1 以上である必要があります。")
+            raise ValueError('max_value は 1 以上である必要があります。')
         seed %= max_value
     return seed
+
 
 def make_random_from_text(text: str) -> random.Random:
     return random.Random(text_to_seed(text))
 
-def generate_bingo_card(level: int, seed_text: str) -> Dict[str, Dict[str, str]]:
-    rng = make_random_from_text(f"level:{level}|seed:{seed_text}")
 
+def get_board_spec(board_mode: str) -> tuple[list[str], list[str], str, int]:
+    if board_mode == '9マスビンゴシート':
+        return ['1', '2', '3'], ['A', 'B', 'C'], 'B-2', 3
+    return ['1', '2', '3', '4', '5'], ['A', 'B', 'C', 'D', 'E'], 'C-3', 5
+
+
+def build_topics_with_colors_25(level: int, rng: random.Random) -> tuple[list[tuple[str, str]], tuple[str, str]]:
     if level == 1:
-        topics_level1 = rng.sample(level1_topics, 14)
-        topics_level2 = rng.sample(level2_topics, 10)
-        topics = topics_level1 + topics_level2
+        topics = rng.sample(level1_topics, 14) + rng.sample(level2_topics, 10)
         colors = ['pink'] * 14 + ['green'] * 10
     elif level == 2:
-        topics_level1 = rng.sample(level1_topics, 10)
-        topics_level2 = rng.sample(level2_topics, 12)
-        topics_level3 = rng.sample(level3_topics, 2)
-        topics = topics_level1 + topics_level2 + topics_level3
+        topics = rng.sample(level1_topics, 10) + rng.sample(level2_topics, 12) + rng.sample(level3_topics, 2)
         colors = ['pink'] * 10 + ['green'] * 12 + ['blue'] * 2
     elif level == 3:
-        topics_level1 = rng.sample(level1_topics, 7)
-        topics_level2 = rng.sample(level2_topics, 13)
-        topics_level3 = rng.sample(level3_topics, 3)
-        topics_level4 = rng.sample(level4_topics, 1)
-        topics = topics_level1 + topics_level2 + topics_level3 + topics_level4
+        topics = rng.sample(level1_topics, 7) + rng.sample(level2_topics, 13) + rng.sample(level3_topics, 3) + rng.sample(level4_topics, 1)
         colors = ['pink'] * 7 + ['green'] * 13 + ['blue'] * 3 + ['lightpurple'] * 1
     elif level == 4:
-        topics_level2 = rng.sample(level2_topics, 10)
-        topics_level3 = rng.sample(level3_topics, 12)
-        topics_level4 = rng.sample(level4_topics, 2)
-        topics = topics_level2 + topics_level3 + topics_level4
+        topics = rng.sample(level2_topics, 10) + rng.sample(level3_topics, 12) + rng.sample(level4_topics, 2)
         colors = ['green'] * 10 + ['blue'] * 12 + ['lightpurple'] * 2
     elif level == 5:
-        topics_level2 = rng.sample(level2_topics, 6)
-        topics_level3 = rng.sample(level3_topics, 12)
-        topics_level4 = rng.sample(level4_topics, 6)
-        topics = topics_level2 + topics_level3 + topics_level4
+        topics = rng.sample(level2_topics, 6) + rng.sample(level3_topics, 12) + rng.sample(level4_topics, 6)
         colors = ['green'] * 6 + ['blue'] * 12 + ['lightpurple'] * 6
     else:
         raise ValueError('レベルは1〜5のみ対応です。')
 
     combined = list(zip(topics, colors))
     rng.shuffle(combined)
-    topics, colors = zip(*combined)
-    center_topic = rng.choice(center_topics)
+    center = (rng.choice(center_topics), 'lightyellow')
+    return combined, center
+
+
+def build_topics_with_colors_9(level: int, rng: random.Random) -> tuple[list[tuple[str, str]], tuple[str, str]]:
+    if level == 1:
+        remaining = [(t, 'pink') for t in rng.sample(level1_topics, 5)] + [(t, 'green') for t in rng.sample(level2_topics, 3)]
+        center = (rng.choice(center_topics), 'lightyellow')
+    elif level == 2:
+        remaining = (
+            [(t, 'pink') for t in rng.sample(level1_topics, 3)]
+            + [(t, 'green') for t in rng.sample(level2_topics, 4)]
+            + [(t, 'blue') for t in rng.sample(level3_topics, 1)]
+        )
+        center = (rng.choice(center_topics), 'lightyellow')
+    elif level == 3:
+        remaining = (
+            [(t, 'pink') for t in rng.sample(level1_topics, 1)]
+            + [(t, 'green') for t in rng.sample(level2_topics, 2)]
+            + [(t, 'blue') for t in rng.sample(level3_topics, 4)]
+            + [(t, 'lightpurple') for t in rng.sample(level4_topics, 1)]
+        )
+        center = (rng.choice(center_topics), 'lightyellow')
+    elif level == 4:
+        remaining = (
+            [(t, 'green') for t in rng.sample(level2_topics, 2)]
+            + [(t, 'blue') for t in rng.sample(level3_topics, 4)]
+            + [(t, 'lightpurple') for t in rng.sample(level4_topics, 2)]
+        )
+        center = (rng.choice(level3_topics), 'blue')
+    elif level == 5:
+        remaining = (
+            [(t, 'green') for t in rng.sample(level2_topics, 1)]
+            + [(t, 'blue') for t in rng.sample(level3_topics, 3)]
+            + [(t, 'lightpurple') for t in rng.sample(level4_topics, 4)]
+        )
+        center = (rng.choice(level4_topics), 'lightpurple')
+    else:
+        raise ValueError('レベルは1〜5のみ対応です。')
+
+    rng.shuffle(remaining)
+    return remaining, center
+
+
+def generate_bingo_card(level: int, seed_text: str, board_mode: str) -> tuple[Dict[str, Dict[str, str]], int]:
+    rows, cols, center_pos, grid_size = get_board_spec(board_mode)
+    rng = make_random_from_text(f'mode:{board_mode}|level:{level}|seed:{seed_text}')
+
+    if board_mode == '9マスビンゴシート':
+        remaining, center = build_topics_with_colors_9(level, rng)
+    else:
+        remaining, center = build_topics_with_colors_25(level, rng)
 
     bingo_card: Dict[str, Dict[str, str]] = {}
     index = 0
-    for col in COLS:
-        for row in ROWS:
+    for row in rows:
+        for col in cols:
             position = f'{col}-{row}'
-            if position == CENTER_POS:
-                bingo_card[position] = {'topic': center_topic, 'color': 'lightyellow', 'cleared': False}
+            if position == center_pos:
+                topic, color = center
             else:
-                bingo_card[position] = {'topic': topics[index], 'color': colors[index], 'cleared': False}
+                topic, color = remaining[index]
                 index += 1
-    return bingo_card
+            bingo_card[position] = {'topic': topic, 'color': color, 'cleared': False}
+
+    return bingo_card, grid_size
+
 
 def push_history() -> None:
     if st.session_state.bingo_card is None:
         return
     st.session_state.history.append(copy.deepcopy(st.session_state.bingo_card))
-    if len(st.session_state.history) > MAX_HISTORY:
+    if len(st.session_state.history) > 5:
         st.session_state.history.pop(0)
+
 
 def clear_cell(position: str) -> None:
     if st.session_state.bingo_card is None:
@@ -378,12 +426,15 @@ def clear_cell(position: str) -> None:
     cell['color'] = 'black'
     cell['cleared'] = True
 
+
 def undo() -> None:
     if st.session_state.history:
         st.session_state.bingo_card = st.session_state.history.pop()
 
+
 def count_cleared(card: Dict[str, Dict[str, str]]) -> int:
     return sum(1 for cell in card.values() if cell.get('cleared'))
+
 
 def render_legend() -> None:
     chips = []
@@ -393,7 +444,8 @@ def render_legend() -> None:
         )
     st.markdown(''.join(chips), unsafe_allow_html=True)
 
-def render_cell(position: str, cell: Dict[str, str]) -> None:
+
+def render_cell(position: str, cell: Dict[str, str], is_small_board: bool) -> None:
     bg = COLOR_MAP.get(cell['color'], '#ffffff')
     body = html.escape(cell['topic']).replace('\n', '<br>')
     is_cleared = cell.get('cleared')
@@ -402,9 +454,10 @@ def render_cell(position: str, cell: Dict[str, str]) -> None:
     badge_bg = 'rgba(255, 255, 255, 0.18)' if is_cleared else 'rgba(0, 0, 0, 0.08)'
     badge_color = '#ffffff' if is_cleared else '#111111'
     done_badge = f"<div class='done-badge' style='background:{badge_bg}; color:{badge_color};'>クリア済み</div>" if is_cleared else ''
+    extra_class = 'small-board' if is_small_board else ''
     st.markdown(
         f"""
-        <div class="bingo-cell" style="background:{bg};">
+        <div class="bingo-cell {extra_class}" style="background:{bg};">
             <div>
                 <div class="bingo-pos" style="color:{pos_color};">{position}</div>
                 <div class="bingo-topic" style="color:{text_color};">{body}</div>
@@ -421,24 +474,27 @@ def render_cell(position: str, cell: Dict[str, str]) -> None:
             clear_cell(position)
             st.rerun()
 
+
 init_state()
 
 st.markdown("<div class='app-title'>🎯 スプラビンゴ</div>", unsafe_allow_html=True)
 st.markdown(
-    "<div class='app-sub'>レベル別5x5ビンゴを生成して、達成したマスを手動でクリアしていく用のStreamlit版です。</div>",
+    "<div class='app-sub'>9マス版と25マス版を切り替えて、達成したマスを手動でクリアしていく用のStreamlit版です。</div>",
     unsafe_allow_html=True,
 )
 
 with st.sidebar:
     st.header('設定')
+    board_mode = st.radio('シートサイズ', BOARD_OPTIONS, index=0 if st.session_state.board_mode == '9マスビンゴシート' else 1)
     selected_level = st.radio('レベルを選ぶ', [1, 2, 3, 4, 5], index=st.session_state.current_level - 1, horizontal=False)
-    seed_text = st.text_input("シード文字列", value=st.session_state.last_seed_text)
-    st.caption("同じ文字列なら同じビンゴシートになります。空欄でも生成できますが、その場合は毎回同じ「空欄用シート」になります。")
+    seed_text = st.text_input('シード文字列', value=st.session_state.last_seed_text)
+    st.caption('同じサイズ・同じレベル・同じ文字列なら同じビンゴシートになります。')
 
     if st.button('新しいビンゴを生成', use_container_width=True):
         st.session_state.current_level = selected_level
         st.session_state.last_seed_text = seed_text
-        st.session_state.bingo_card = generate_bingo_card(selected_level, seed_text)
+        st.session_state.board_mode = board_mode
+        st.session_state.bingo_card, st.session_state.grid_size = generate_bingo_card(selected_level, seed_text, board_mode)
         st.session_state.history = []
         st.rerun()
 
@@ -448,40 +504,41 @@ with st.sidebar:
         st.rerun()
 
     if st.session_state.bingo_card is not None:
+        total_cells = len(st.session_state.bingo_card)
         cleared = count_cleared(st.session_state.bingo_card)
-        st.metric('クリア済みマス', f'{cleared} / 25')
-        st.caption(f'戻せる履歴: {len(st.session_state.history)} / {MAX_HISTORY}')
-        shown_seed = st.session_state.last_seed_text if st.session_state.last_seed_text != "" else "（空欄）"
+        st.metric('クリア済みマス', f'{cleared} / {total_cells}')
+        st.caption(f'戻せる履歴: {len(st.session_state.history)} / 5')
+        shown_seed = st.session_state.last_seed_text if st.session_state.last_seed_text != '' else '（空欄）'
         st.caption(f'現在のシード: {shown_seed}')
 
     st.divider()
     st.write('あそびかた')
-    st.caption('1. レベルとシード文字列を入れて新規生成してください')
-    st.caption('2. 同じレベル・同じ文字列なら同じ盤面になります')
-    st.caption('3. 試合後、達成したマスはすべてぶん「◯-◯ をクリア」を押してください')
-    st.caption('4. ビンゴが1列完成すればクリアです。次のビンゴに移行してください。')
-    st.caption('5. クリアしたビンゴのレベルがポイントになります。')
+    st.caption('1. シートサイズ・レベル・シード文字列を決めて新規生成してください')
+    st.caption('2. 同じ条件なら同じ盤面になります')
+    st.caption('3. 試合後、達成したマスぶんだけ「◯-◯ をクリア」を押してください')
+    st.caption('4. まちがえたら「1手もどす」を使ってください')
 
 if st.session_state.bingo_card is None:
-    st.info('左のサイドバーでレベルとシード文字列を入力して「新しいビンゴを生成」を押してください。')
+    st.info('左のサイドバーでシートサイズ・レベル・シード文字列を入力して「新しいビンゴを生成」を押してください。')
     st.stop()
 
+rows, cols, center_pos, grid_size = get_board_spec(st.session_state.board_mode)
 header_left, header_right = st.columns([1.2, 0.8])
 with header_left:
-    st.subheader(f'レベル {st.session_state.current_level} ビンゴ')
+    st.subheader(f"{st.session_state.board_mode} / レベル {st.session_state.current_level}")
 with header_right:
     cleared = count_cleared(st.session_state.bingo_card)
-    st.write(f'進捗: **{cleared} / 25**')
+    st.write(f"進捗: **{cleared} / {len(st.session_state.bingo_card)}**")
 
-current_seed_label = st.session_state.last_seed_text if st.session_state.last_seed_text != "" else "（空欄）"
+current_seed_label = st.session_state.last_seed_text if st.session_state.last_seed_text != '' else '（空欄）'
 st.markdown(f"<div class='seed-note'>現在のシード文字列: <b>{html.escape(current_seed_label)}</b></div>", unsafe_allow_html=True)
 
 render_legend()
 st.write('')
 
-for row in ROWS:
-    row_columns = st.columns(5, gap='small')
-    for idx, col in enumerate(COLS):
+for row in rows:
+    row_columns = st.columns(grid_size, gap='small')
+    for idx, col in enumerate(cols):
         pos = f'{col}-{row}'
         with row_columns[idx]:
-            render_cell(pos, st.session_state.bingo_card[pos])
+            render_cell(pos, st.session_state.bingo_card[pos], is_small_board=(grid_size == 3))
