@@ -725,7 +725,6 @@ with st.sidebar:
         st.session_state.board_mode = board_mode
         st.session_state.bingo_card, st.session_state.grid_size = generate_bingo_card(selected_level, seed_text, board_mode)
         st.session_state.history = []
-        st.rerun()
 
     st.divider()
     st.write('部屋同期')
@@ -754,20 +753,17 @@ with st.sidebar:
             )
             load_room_to_session(room_id)
             set_room_query_params(room_id)
-            st.rerun()
 
     if st.session_state.room_active:
         st.success(f"入室中: {st.session_state.room_id}")
         st.caption('既存の部屋に入った場合は、その部屋のシートサイズ・レベル・シードが使われます。')
         if st.button('手動更新', use_container_width=True):
             sync_room_to_session()
-            st.rerun()
         if st.button('部屋から退出', use_container_width=True):
             st.session_state.room_active = False
             st.session_state.room_id = ''
             st.session_state.room_message = '部屋から退出しました。'
             clear_room_query_params()
-            st.rerun()
     elif st.session_state.room_message:
         st.info(st.session_state.room_message)
 
