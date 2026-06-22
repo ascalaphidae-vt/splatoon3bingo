@@ -237,9 +237,9 @@ st.markdown(
     .bingo-cell {
         border: 1px solid rgba(49, 51, 63, 0.14);
         border-radius: 12px;
-        padding: 0.42rem 0.48rem;
-        min-height: 96px;
-        margin-bottom: 0.24rem;
+        padding: 0.5rem 0.54rem;
+        min-height: 112px;
+        margin-bottom: 0.16rem;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -247,16 +247,24 @@ st.markdown(
         overflow: hidden;
     }
     .bingo-cell.small-board {
-        min-height: 104px;
-        padding: 0.5rem 0.56rem;
+        min-height: 132px;
+        padding: 0.62rem 0.68rem;
     }
     .bingo-cell.small-board .bingo-pos {
-        font-size: 0.8rem;
-        margin-bottom: 0.24rem;
+        font-size: 0.82rem;
+        margin-bottom: 0.28rem;
     }
-    .bingo-cell.small-board .bingo-topic {
-        font-size: 0.98rem;
+    .bingo-cell.small-board .bingo-topic.topic-short {
+        font-size: 1.08rem;
         line-height: 1.34;
+    }
+    .bingo-cell.small-board .bingo-topic.topic-medium {
+        font-size: 0.98rem;
+        line-height: 1.31;
+    }
+    .bingo-cell.small-board .bingo-topic.topic-long {
+        font-size: 0.88rem;
+        line-height: 1.28;
     }
     .bingo-cell.small-board .done-badge {
         font-size: 0.78rem;
@@ -270,13 +278,25 @@ st.markdown(
         margin-bottom: 0.18rem;
     }
     .bingo-topic {
-        font-size: 0.76rem;
+        font-size: 0.82rem;
         line-height: 1.24;
         color: #111111;
         word-break: break-word;
         overflow-wrap: anywhere;
         white-space: pre-wrap;
         font-weight: 600;
+    }
+    .bingo-topic.topic-short {
+        font-size: 0.86rem;
+        line-height: 1.25;
+    }
+    .bingo-topic.topic-medium {
+        font-size: 0.78rem;
+        line-height: 1.23;
+    }
+    .bingo-topic.topic-long {
+        font-size: 0.7rem;
+        line-height: 1.2;
     }
     .done-badge {
         display: inline-block;
@@ -303,9 +323,11 @@ st.markdown(
         padding-right: 0.14rem;
     }
     div[data-testid="stButton"] > button {
-        padding-top: 0.28rem;
-        padding-bottom: 0.28rem;
-        font-size: 0.88rem;
+        padding-top: 0.18rem;
+        padding-bottom: 0.18rem;
+        min-height: 2rem;
+        font-size: 0.74rem;
+        opacity: 0.88;
     }
     </style>
     """,
@@ -700,9 +722,20 @@ def render_legend() -> None:
     st.markdown(''.join(chips), unsafe_allow_html=True)
 
 
+def get_topic_length_class(topic: str) -> str:
+    length = len(topic)
+    if length >= 32:
+        return 'topic-long'
+    if length >= 22:
+        return 'topic-medium'
+    return 'topic-short'
+
+
 def render_cell(position: str, cell: Dict[str, str], is_small_board: bool) -> None:
     bg = COLOR_MAP.get(cell['color'], '#ffffff')
-    body = html.escape(cell['topic']).replace('\n', '<br>')
+    topic = cell['topic']
+    body = html.escape(topic).replace('\n', '<br>')
+    topic_class = get_topic_length_class(topic)
     is_cleared = cell.get('cleared')
     text_color = '#ffffff' if is_cleared else '#111111'
     pos_color = '#ffffff' if is_cleared else '#222222'
@@ -715,7 +748,7 @@ def render_cell(position: str, cell: Dict[str, str], is_small_board: bool) -> No
         <div class="bingo-cell {extra_class}" style="background:{bg};">
             <div>
                 <div class="bingo-pos" style="color:{pos_color};">{position}</div>
-                <div class="bingo-topic" style="color:{text_color};">{body}</div>
+                <div class="bingo-topic {topic_class}" style="color:{text_color};">{body}</div>
             </div>
             {done_badge}
         </div>
