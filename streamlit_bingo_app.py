@@ -1,11 +1,16 @@
 import copy
+from datetime import datetime, timezone
 import hashlib
 import html
+from pathlib import Path
 import random
+import sqlite3
+import tempfile
 import unicodedata
 from typing import Dict, Optional
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="スプラビンゴ", page_icon="🎯", layout="wide")
 
@@ -185,6 +190,8 @@ center_topics = [
 ]
 
 BOARD_OPTIONS = ['9マスビンゴシート', '25マスビンゴシート']
+ROOM_REFRESH_SECONDS = 3
+ROOM_DB_NAME = 'bingo_rooms.sqlite3'
 COLOR_MAP = {
     'pink': '#ffd7e2',
     'green': '#daf5da',
@@ -307,6 +314,193 @@ st.markdown(
 )
 
 
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def get_room_db_path() -> Path:
+    app_path = Path(__file__).resolve().with_name(ROOM_DB_NAME)
+    try:
+        app_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(app_path) as conn:
+            conn.execute('PRAGMA user_version')
+        return app_path
+    except sqlite3.Error:
+        return Path(tempfile.gettempdir()) / ROOM_DB_NAME
+
+
+def get_db_connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(get_room_db_path(), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA busy_timeout = 5000')
+    conn.execute('PRAGMA journal_mode = WAL')
+    return conn
+
+
+def init_room_db() -> None:
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS rooms (
+                room_id TEXT PRIMARY KEY,
+                board_mode TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                seed_text TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cleared_cells (
+                room_id TEXT NOT NULL,
+                position TEXT NOT NULL,
+                cleared_by TEXT NOT NULL,
+                cleared_at TEXT NOT NULL,
+                PRIMARY KEY (room_id, position),
+                FOREIGN KEY (room_id) REFERENCES rooms(room_id)
+            )
+            """
+        )
+
+
+def normalize_room_id(room_id: str) -> str:
+    return unicodedata.normalize('NFC', room_id).strip()
+
+
+def load_room(room_id: str) -> Optional[sqlite3.Row]:
+    init_room_db()
+    with get_db_connection() as conn:
+        return conn.execute('SELECT * FROM rooms WHERE room_id = ?', (room_id,)).fetchone()
+
+
+def create_room_if_missing(room_id: str, board_mode: str, level: int, seed_text: str) -> sqlite3.Row:
+    init_room_db()
+    timestamp = now_iso()
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO rooms (room_id, board_mode, level, seed_text, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (room_id, board_mode, level, seed_text, timestamp, timestamp),
+        )
+    room = load_room(room_id)
+    if room is None:
+        raise RuntimeError('部屋の読み込みに失敗しました。')
+    return room
+
+
+def get_cleared_positions(room_id: str) -> set[str]:
+    init_room_db()
+    with get_db_connection() as conn:
+        rows = conn.execute(
+            'SELECT position FROM cleared_cells WHERE room_id = ? ORDER BY cleared_at ASC',
+            (room_id,),
+        ).fetchall()
+    return {row['position'] for row in rows}
+
+
+def save_cleared_position(room_id: str, position: str, player_name: str) -> bool:
+    init_room_db()
+    timestamp = now_iso()
+    name = player_name.strip() if player_name.strip() else '匿名'
+    with get_db_connection() as conn:
+        cursor = conn.execute(
+            """
+            INSERT OR IGNORE INTO cleared_cells (room_id, position, cleared_by, cleared_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (room_id, position, name, timestamp),
+        )
+        conn.execute('UPDATE rooms SET updated_at = ? WHERE room_id = ?', (timestamp, room_id))
+        return cursor.rowcount == 1
+
+
+def mark_cell_cleared(card: Dict[str, Dict[str, str]], position: str) -> None:
+    if position not in card:
+        return
+    card[position]['topic'] = 'Clear!!'
+    card[position]['color'] = 'black'
+    card[position]['cleared'] = True
+
+
+def apply_cleared_positions(card: Dict[str, Dict[str, str]], positions: set[str]) -> None:
+    for position in positions:
+        mark_cell_cleared(card, position)
+
+
+def load_room_to_session(room_id: str) -> bool:
+    room = load_room(room_id)
+    if room is None:
+        return False
+    card, grid_size = generate_bingo_card(int(room['level']), room['seed_text'], room['board_mode'])
+    apply_cleared_positions(card, get_cleared_positions(room_id))
+    st.session_state.bingo_card = card
+    st.session_state.grid_size = grid_size
+    st.session_state.current_level = int(room['level'])
+    st.session_state.last_seed_text = room['seed_text']
+    st.session_state.board_mode = room['board_mode']
+    st.session_state.history = []
+    st.session_state.room_id = room_id
+    st.session_state.room_active = True
+    return True
+
+
+def sync_room_to_session() -> None:
+    room_id = st.session_state.get('room_id', '')
+    if not st.session_state.get('room_active') or not room_id:
+        return
+    load_room_to_session(room_id)
+
+
+def set_room_query_params(room_id: str, player_name: str) -> None:
+    try:
+        st.query_params['room_id'] = room_id
+        if player_name:
+            st.query_params['player_name'] = player_name
+    except Exception:
+        pass
+
+
+def clear_room_query_params() -> None:
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+
+
+def hydrate_room_from_query_params() -> None:
+    if st.session_state.get('room_active'):
+        return
+    try:
+        room_id = normalize_room_id(st.query_params.get('room_id', ''))
+        player_name = st.query_params.get('player_name', '')
+    except Exception:
+        return
+    if not room_id:
+        return
+    if player_name and not st.session_state.get('player_name'):
+        st.session_state.player_name = player_name
+    load_room_to_session(room_id)
+
+
+def render_room_auto_refresh() -> None:
+    if not st.session_state.get('room_active') or not st.session_state.get('room_auto_refresh'):
+        return
+    components.html(
+        f"""
+        <script>
+        setTimeout(function() {{
+            window.parent.location.reload();
+        }}, {ROOM_REFRESH_SECONDS * 1000});
+        </script>
+        """,
+        height=0,
+    )
+
+
 def init_state() -> None:
     if 'bingo_card' not in st.session_state:
         st.session_state.bingo_card = None
@@ -322,6 +516,16 @@ def init_state() -> None:
         st.session_state.grid_size = 3
     if 'memo_text' not in st.session_state:
         st.session_state.memo_text = ''
+    if 'room_id' not in st.session_state:
+        st.session_state.room_id = ''
+    if 'player_name' not in st.session_state:
+        st.session_state.player_name = ''
+    if 'room_active' not in st.session_state:
+        st.session_state.room_active = False
+    if 'room_auto_refresh' not in st.session_state:
+        st.session_state.room_auto_refresh = True
+    if 'room_message' not in st.session_state:
+        st.session_state.room_message = ''
 
 
 def text_to_seed(text: str, max_value: Optional[int] = None) -> int:
@@ -445,13 +649,15 @@ def push_history() -> None:
 def clear_cell(position: str) -> None:
     if st.session_state.bingo_card is None:
         return
+    if st.session_state.get('room_active') and st.session_state.get('room_id'):
+        save_cleared_position(st.session_state.room_id, position, st.session_state.get('player_name', ''))
+        sync_room_to_session()
+        return
     cell = st.session_state.bingo_card[position]
     if cell['cleared']:
         return
     push_history()
-    cell['topic'] = 'Clear!!'
-    cell['color'] = 'black'
-    cell['cleared'] = True
+    mark_cell_cleared(st.session_state.bingo_card, position)
 
 
 def undo() -> None:
@@ -503,6 +709,9 @@ def render_cell(position: str, cell: Dict[str, str], is_small_board: bool) -> No
 
 
 init_state()
+init_room_db()
+hydrate_room_from_query_params()
+sync_room_to_session()
 
 st.markdown("<div class='app-title'>🎯 スプラビンゴ</div>", unsafe_allow_html=True)
 st.markdown(
@@ -518,6 +727,10 @@ with st.sidebar:
     st.caption('同じサイズ・同じレベル・同じ文字列なら同じビンゴシートになります。')
 
     if st.button('新しいビンゴを生成', use_container_width=True):
+        st.session_state.room_active = False
+        st.session_state.room_id = ''
+        st.session_state.room_message = ''
+        clear_room_query_params()
         st.session_state.current_level = selected_level
         st.session_state.last_seed_text = seed_text
         st.session_state.board_mode = board_mode
@@ -525,10 +738,53 @@ with st.sidebar:
         st.session_state.history = []
         st.rerun()
 
-    undo_disabled = len(st.session_state.history) == 0
+    st.divider()
+    st.write('部屋同期')
+    room_id_input = st.text_input('部屋ID', value=st.session_state.room_id, placeholder='例: team-a')
+    player_name_input = st.text_input('名前（任意）', value=st.session_state.player_name, placeholder='例: あもあす')
+    st.session_state.room_auto_refresh = st.checkbox(
+        f'{ROOM_REFRESH_SECONDS}秒ごとに自動更新',
+        value=st.session_state.room_auto_refresh,
+    )
+
+    if st.button('この設定で部屋を作成 / 入室', use_container_width=True):
+        room_id = normalize_room_id(room_id_input)
+        player_name = player_name_input.strip()
+        if not room_id:
+            st.session_state.room_message = '部屋IDを入力してください。'
+        else:
+            room = create_room_if_missing(room_id, board_mode, selected_level, seed_text)
+            st.session_state.player_name = player_name
+            st.session_state.room_message = (
+                '既存の部屋に入室しました。'
+                if room['created_at'] != room['updated_at'] or get_cleared_positions(room_id)
+                else '部屋を作成 / 入室しました。'
+            )
+            load_room_to_session(room_id)
+            set_room_query_params(room_id, player_name)
+            st.rerun()
+
+    if st.session_state.room_active:
+        st.success(f"入室中: {st.session_state.room_id}")
+        st.caption('既存の部屋に入った場合は、その部屋のシートサイズ・レベル・シードが使われます。')
+        if st.button('手動更新', use_container_width=True):
+            sync_room_to_session()
+            st.rerun()
+        if st.button('部屋から退出', use_container_width=True):
+            st.session_state.room_active = False
+            st.session_state.room_id = ''
+            st.session_state.room_message = '部屋から退出しました。'
+            clear_room_query_params()
+            st.rerun()
+    elif st.session_state.room_message:
+        st.info(st.session_state.room_message)
+
+    undo_disabled = len(st.session_state.history) == 0 or st.session_state.room_active
     if st.button('1手もどす', use_container_width=True, disabled=undo_disabled):
         undo()
         st.rerun()
+    if st.session_state.room_active:
+        st.caption('部屋同期中は「1手もどす」は使えません。')
 
     if st.session_state.bingo_card is not None:
         total_cells = len(st.session_state.bingo_card)
@@ -545,6 +801,8 @@ with st.sidebar:
     st.caption('3. 試合後、達成したマスぶんだけ「◯-◯ をクリア」を押してください')
     st.caption('4. まちがえたら「1手もどす」を使ってください')
     st.text_area('メモ', key='memo_text', height=140)
+
+render_room_auto_refresh()
 
 if st.session_state.bingo_card is None:
     st.info('左のサイドバーでシートサイズ・レベル・シード文字列を入力して「新しいビンゴを生成」を押してください。')
