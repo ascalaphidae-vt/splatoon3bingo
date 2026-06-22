@@ -10,7 +10,6 @@ import unicodedata
 from typing import Dict, Optional
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 st.set_page_config(page_title="スプラビンゴ", page_icon="🎯", layout="wide")
 
@@ -375,11 +374,11 @@ def load_room(room_id: str) -> Optional[sqlite3.Row]:
         return conn.execute('SELECT * FROM rooms WHERE room_id = ?', (room_id,)).fetchone()
 
 
-def create_room_if_missing(room_id: str, board_mode: str, level: int, seed_text: str) -> sqlite3.Row:
+def create_room_if_missing(room_id: str, board_mode: str, level: int, seed_text: str) -> tuple[sqlite3.Row, bool]:
     init_room_db()
     timestamp = now_iso()
     with get_db_connection() as conn:
-        conn.execute(
+        cursor = conn.execute(
             """
             INSERT OR IGNORE INTO rooms (room_id, board_mode, level, seed_text, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -389,7 +388,7 @@ def create_room_if_missing(room_id: str, board_mode: str, level: int, seed_text:
     room = load_room(room_id)
     if room is None:
         raise RuntimeError('部屋の読み込みに失敗しました。')
-    return room
+    return room, cursor.rowcount == 1
 
 
 def get_cleared_positions(room_id: str) -> set[str]:
@@ -455,11 +454,11 @@ def sync_room_to_session() -> None:
     load_room_to_session(room_id)
 
 
-def set_room_query_params(room_id: str, player_name: str) -> None:
+def set_room_query_params(room_id: str) -> None:
     try:
         st.query_params['room_id'] = room_id
-        if player_name:
-            st.query_params['player_name'] = player_name
+        if 'player_name' in st.query_params:
+            del st.query_params['player_name']
     except Exception:
         pass
 
@@ -476,29 +475,19 @@ def hydrate_room_from_query_params() -> None:
         return
     try:
         room_id = normalize_room_id(st.query_params.get('room_id', ''))
-        player_name = st.query_params.get('player_name', '')
     except Exception:
         return
     if not room_id:
         return
-    if player_name and not st.session_state.get('player_name'):
-        st.session_state.player_name = player_name
     load_room_to_session(room_id)
 
 
-def render_room_auto_refresh() -> None:
-    if not st.session_state.get('room_active') or not st.session_state.get('room_auto_refresh'):
-        return
-    components.html(
-        f"""
-        <script>
-        setTimeout(function() {{
-            window.parent.location.reload();
-        }}, {ROOM_REFRESH_SECONDS * 1000});
-        </script>
-        """,
-        height=0,
-    )
+def can_use_fragment_refresh() -> bool:
+    return get_fragment_decorator() is not None
+
+
+def get_fragment_decorator():
+    return getattr(st, 'fragment', None) or getattr(st, 'experimental_fragment', None)
 
 
 def init_state() -> None:
@@ -741,11 +730,14 @@ with st.sidebar:
     st.divider()
     st.write('部屋同期')
     room_id_input = st.text_input('部屋ID', value=st.session_state.room_id, placeholder='例: team-a')
-    player_name_input = st.text_input('名前（任意）', value=st.session_state.player_name, placeholder='例: あもあす')
+    player_name_input = st.text_input('名前（任意）', value=st.session_state.player_name, placeholder='例: あす')
     st.session_state.room_auto_refresh = st.checkbox(
         f'{ROOM_REFRESH_SECONDS}秒ごとに自動更新',
-        value=st.session_state.room_auto_refresh,
+        value=st.session_state.room_auto_refresh and can_use_fragment_refresh(),
+        disabled=not can_use_fragment_refresh(),
     )
+    if not can_use_fragment_refresh():
+        st.caption('このStreamlit環境では自動更新に対応していないため、手動更新を使ってください。')
 
     if st.button('この設定で部屋を作成 / 入室', use_container_width=True):
         room_id = normalize_room_id(room_id_input)
@@ -753,15 +745,15 @@ with st.sidebar:
         if not room_id:
             st.session_state.room_message = '部屋IDを入力してください。'
         else:
-            room = create_room_if_missing(room_id, board_mode, selected_level, seed_text)
+            room, was_created = create_room_if_missing(room_id, board_mode, selected_level, seed_text)
             st.session_state.player_name = player_name
             st.session_state.room_message = (
-                '既存の部屋に入室しました。'
-                if room['created_at'] != room['updated_at'] or get_cleared_positions(room_id)
-                else '部屋を作成 / 入室しました。'
+                '部屋を作成 / 入室しました。'
+                if was_created
+                else '既存の部屋に入室しました。'
             )
             load_room_to_session(room_id)
-            set_room_query_params(room_id, player_name)
+            set_room_query_params(room_id)
             st.rerun()
 
     if st.session_state.room_active:
@@ -802,29 +794,37 @@ with st.sidebar:
     st.caption('4. まちがえたら「1手もどす」を使ってください')
     st.text_area('メモ', key='memo_text', height=140)
 
-render_room_auto_refresh()
-
 if st.session_state.bingo_card is None:
     st.info('左のサイドバーでシートサイズ・レベル・シード文字列を入力して「新しいビンゴを生成」を押してください。')
     st.stop()
 
-rows, cols, center_pos, grid_size = get_board_spec(st.session_state.board_mode)
-header_left, header_right = st.columns([1.2, 0.8])
-with header_left:
-    st.subheader(f"{st.session_state.board_mode} / レベル {st.session_state.current_level}")
-with header_right:
-    cleared = count_cleared(st.session_state.bingo_card)
-    st.write(f"進捗: **{cleared} / {len(st.session_state.bingo_card)}**")
+def render_board_area() -> None:
+    if st.session_state.get('room_active') and st.session_state.get('room_auto_refresh'):
+        sync_room_to_session()
 
-current_seed_label = st.session_state.last_seed_text if st.session_state.last_seed_text != '' else '（空欄）'
-st.markdown(f"<div class='seed-note'>現在のシード文字列: <b>{html.escape(current_seed_label)}</b></div>", unsafe_allow_html=True)
+    rows, cols, center_pos, grid_size = get_board_spec(st.session_state.board_mode)
+    header_left, header_right = st.columns([1.2, 0.8])
+    with header_left:
+        st.subheader(f"{st.session_state.board_mode} / レベル {st.session_state.current_level}")
+    with header_right:
+        cleared = count_cleared(st.session_state.bingo_card)
+        st.write(f"進捗: **{cleared} / {len(st.session_state.bingo_card)}**")
 
-render_legend()
-st.write('')
+    current_seed_label = st.session_state.last_seed_text if st.session_state.last_seed_text != '' else '（空欄）'
+    st.markdown(f"<div class='seed-note'>現在のシード文字列: <b>{html.escape(current_seed_label)}</b></div>", unsafe_allow_html=True)
 
-for row in rows:
-    row_columns = st.columns(grid_size, gap='small')
-    for idx, col in enumerate(cols):
-        pos = f'{col}-{row}'
-        with row_columns[idx]:
-            render_cell(pos, st.session_state.bingo_card[pos], is_small_board=(grid_size == 3))
+    render_legend()
+    st.write('')
+
+    for row in rows:
+        row_columns = st.columns(grid_size, gap='small')
+        for idx, col in enumerate(cols):
+            pos = f'{col}-{row}'
+            with row_columns[idx]:
+                render_cell(pos, st.session_state.bingo_card[pos], is_small_board=(grid_size == 3))
+
+
+if st.session_state.get('room_active') and st.session_state.get('room_auto_refresh') and can_use_fragment_refresh():
+    get_fragment_decorator()(run_every=f'{ROOM_REFRESH_SECONDS}s')(render_board_area)()
+else:
+    render_board_area()
