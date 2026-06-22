@@ -391,6 +391,29 @@ def create_room_if_missing(room_id: str, board_mode: str, level: int, seed_text:
     return room, cursor.rowcount == 1
 
 
+def replace_room_board(room_id: str, board_mode: str, level: int, seed_text: str) -> sqlite3.Row:
+    init_room_db()
+    timestamp = now_iso()
+    with get_db_connection() as conn:
+        conn.execute('DELETE FROM cleared_cells WHERE room_id = ?', (room_id,))
+        conn.execute(
+            """
+            INSERT INTO rooms (room_id, board_mode, level, seed_text, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(room_id) DO UPDATE SET
+                board_mode = excluded.board_mode,
+                level = excluded.level,
+                seed_text = excluded.seed_text,
+                updated_at = excluded.updated_at
+            """,
+            (room_id, board_mode, level, seed_text, timestamp, timestamp),
+        )
+    room = load_room(room_id)
+    if room is None:
+        raise RuntimeError('部屋のビンゴシート更新に失敗しました。')
+    return room
+
+
 def get_cleared_positions(room_id: str) -> set[str]:
     init_room_db()
     with get_db_connection() as conn:
@@ -471,6 +494,14 @@ def clear_room_query_params() -> None:
 
 
 def hydrate_room_from_query_params() -> None:
+    if st.session_state.get('room_ignore_query_params'):
+        try:
+            room_id = normalize_room_id(st.query_params.get('room_id', ''))
+        except Exception:
+            room_id = ''
+        if not room_id:
+            st.session_state.room_ignore_query_params = False
+        return
     if st.session_state.get('room_active'):
         return
     try:
@@ -515,6 +546,8 @@ def init_state() -> None:
         st.session_state.room_auto_refresh = True
     if 'room_message' not in st.session_state:
         st.session_state.room_message = ''
+    if 'room_ignore_query_params' not in st.session_state:
+        st.session_state.room_ignore_query_params = False
 
 
 def text_to_seed(text: str, max_value: Optional[int] = None) -> int:
@@ -716,14 +749,20 @@ with st.sidebar:
     st.caption('同じサイズ・同じレベル・同じ文字列なら同じビンゴシートになります。')
 
     if st.button('新しいビンゴを生成', use_container_width=True):
-        st.session_state.room_active = False
-        st.session_state.room_id = ''
-        st.session_state.room_message = ''
-        clear_room_query_params()
-        st.session_state.current_level = selected_level
-        st.session_state.last_seed_text = seed_text
-        st.session_state.board_mode = board_mode
-        st.session_state.bingo_card, st.session_state.grid_size = generate_bingo_card(selected_level, seed_text, board_mode)
+        if st.session_state.room_active and st.session_state.room_id:
+            replace_room_board(st.session_state.room_id, board_mode, selected_level, seed_text)
+            load_room_to_session(st.session_state.room_id)
+            st.session_state.room_message = '部屋のビンゴシートを新しくしました。'
+        else:
+            st.session_state.room_active = False
+            st.session_state.room_id = ''
+            st.session_state.room_ignore_query_params = True
+            st.session_state.room_message = ''
+            clear_room_query_params()
+            st.session_state.current_level = selected_level
+            st.session_state.last_seed_text = seed_text
+            st.session_state.board_mode = board_mode
+            st.session_state.bingo_card, st.session_state.grid_size = generate_bingo_card(selected_level, seed_text, board_mode)
         st.session_state.history = []
 
     st.divider()
@@ -746,6 +785,7 @@ with st.sidebar:
         else:
             room, was_created = create_room_if_missing(room_id, board_mode, selected_level, seed_text)
             st.session_state.player_name = player_name
+            st.session_state.room_ignore_query_params = False
             st.session_state.room_message = (
                 '部屋を作成 / 入室しました。'
                 if was_created
@@ -756,12 +796,15 @@ with st.sidebar:
 
     if st.session_state.room_active:
         st.success(f"入室中: {st.session_state.room_id}")
+        if st.session_state.room_message:
+            st.info(st.session_state.room_message)
         st.caption('既存の部屋に入った場合は、その部屋のシートサイズ・レベル・シードが使われます。')
         if st.button('手動更新', use_container_width=True):
             sync_room_to_session()
         if st.button('部屋から退出', use_container_width=True):
             st.session_state.room_active = False
             st.session_state.room_id = ''
+            st.session_state.room_ignore_query_params = True
             st.session_state.room_message = '部屋から退出しました。'
             clear_room_query_params()
     elif st.session_state.room_message:
