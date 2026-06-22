@@ -807,6 +807,7 @@ with st.sidebar:
             st.session_state.room_ignore_query_params = True
             st.session_state.room_message = '部屋から退出しました。'
             clear_room_query_params()
+            st.rerun()
     elif st.session_state.room_message:
         st.info(st.session_state.room_message)
 
