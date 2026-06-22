@@ -255,16 +255,16 @@ st.markdown(
         margin-bottom: 0.28rem;
     }
     .bingo-cell.small-board .bingo-topic.topic-short {
-        font-size: 1.08rem;
-        line-height: 1.34;
+        font-size: 1.34rem;
+        line-height: 1.24;
     }
     .bingo-cell.small-board .bingo-topic.topic-medium {
-        font-size: 0.98rem;
-        line-height: 1.31;
+        font-size: 1.18rem;
+        line-height: 1.22;
     }
     .bingo-cell.small-board .bingo-topic.topic-long {
-        font-size: 0.88rem;
-        line-height: 1.28;
+        font-size: 1.02rem;
+        line-height: 1.2;
     }
     .bingo-cell.small-board .done-badge {
         font-size: 0.78rem;
@@ -284,19 +284,19 @@ st.markdown(
         word-break: break-word;
         overflow-wrap: anywhere;
         white-space: pre-wrap;
-        font-weight: 600;
+        font-weight: 700;
     }
     .bingo-topic.topic-short {
-        font-size: 0.86rem;
-        line-height: 1.25;
+        font-size: 1.02rem;
+        line-height: 1.2;
     }
     .bingo-topic.topic-medium {
-        font-size: 0.78rem;
-        line-height: 1.23;
+        font-size: 0.92rem;
+        line-height: 1.18;
     }
     .bingo-topic.topic-long {
-        font-size: 0.7rem;
-        line-height: 1.2;
+        font-size: 0.82rem;
+        line-height: 1.16;
     }
     .done-badge {
         display: inline-block;
